@@ -28,25 +28,11 @@
 #endif
 
 #include <bundle.h>
+#include <message_port_error.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/**
- * @brief Enumerations of error code for Application.
- */
-typedef enum
-{
-	MESSAGEPORT_ERROR_NONE = 0, /**< Successful */
-	MESSAGEPORT_ERROR_IO_ERROR = -1, 		/**< Internal I/O error */
-	MESSAGEPORT_ERROR_OUT_OF_MEMORY = -2,		/**< Out of memory */
-	MESSAGEPORT_ERROR_INVALID_PARAMETER = -3,	/**< Invalid parameter */
-	MESSAGEPORT_ERROR_MESSAGEPORT_NOT_FOUND = -4, 		/**< The message port of the remote application is not found */
-	MESSAGEPORT_ERROR_CERTIFICATE_NOT_MATCH = -5, 	/**< The remote application is not signed with the same certificate */
-	MESSAGEPORT_ERROR_MAX_EXCEEDED = -6, 	/**< The size of message has exceeded the maximum limit */
-} messageport_error_e;
-
 
 /**
  * @brief   Called when a message is received from the remote application.
@@ -73,6 +59,7 @@ typedef void (*messageport_message_cb)(int id, const char* remote_app_id, const 
  * @retval #MESSAGEPORT_ERROR_INVALID_PARAMETER Invalid parameter
  * @retval #MESSAGEPORT_ERROR_OUT_OF_MEMORY Out of memory
  * @retval #MESSAGEPORT_ERROR_IO_ERROR Internal I/O error
+ * @retval #MESSAGEPORT_ERROR_RESOURCE_UNAVAILABLE Resource temporarily unavailable
  */
 EXPORT_API int messageport_register_local_port(const char* local_port, messageport_message_cb callback);
 
@@ -88,6 +75,7 @@ EXPORT_API int messageport_register_local_port(const char* local_port, messagepo
  * @retval #MESSAGEPORT_ERROR_INVALID_PARAMETER Invalid parameter
  * @retval #MESSAGEPORT_ERROR_OUT_OF_MEMORY Out of memory
  * @retval #MESSAGEPORT_ERROR_IO_ERROR Internal I/O error
+ * @retval #MESSAGEPORT_ERROR_RESOURCE_UNAVAILABLE Resource temporarily unavailable
  */
 EXPORT_API int messageport_register_trusted_local_port(const char* local_port, messageport_message_cb callback);
 
@@ -102,6 +90,7 @@ EXPORT_API int messageport_register_trusted_local_port(const char* local_port, m
  * @retval #MESSAGEPORT_ERROR_INVALID_PARAMETER Invalid parameter
  * @retval #MESSAGEPORT_ERROR_OUT_OF_MEMORY Out of memory
  * @retval #MESSAGEPORT_ERROR_IO_ERROR Internal I/O error
+ * @retval #MESSAGEPORT_ERROR_RESOURCE_UNAVAILABLE Resource temporarily unavailable
  */
 EXPORT_API int messageport_check_remote_port(const char* remote_app_id, const char *remote_port, bool* exist);
 
@@ -117,6 +106,7 @@ EXPORT_API int messageport_check_remote_port(const char* remote_app_id, const ch
  * @retval #MESSAGEPORT_ERROR_OUT_OF_MEMORY Out of memory
  * @retval #MESSAGEPORT_ERROR_CERTIFICATE_NOT_MATCH The remote application is not signed with the same certificate
  * @retval #MESSAGEPORT_ERROR_IO_ERROR Internal I/O error
+ * @retval #MESSAGEPORT_ERROR_RESOURCE_UNAVAILABLE Resource temporarily unavailable
  */
 EXPORT_API int messageport_check_trusted_remote_port(const char* remote_app_id, const char *remote_port, bool* exist);
 
@@ -133,6 +123,7 @@ EXPORT_API int messageport_check_trusted_remote_port(const char* remote_app_id, 
  * @retval #MESSAGEPORT_ERROR_MESSAGEPORT_NOT_FOUND The message port of the remote application is not found
  * @retval #MESSAGEPORT_ERROR_MAX_EXCEEDED The size of message has exceeded the maximum limit
  * @retval #MESSAGEPORT_ERROR_IO_ERROR Internal I/O error
+ * @retval #MESSAGEPORT_ERROR_RESOURCE_UNAVAILABLE Resource temporarily unavailable
  *
  * @code
  * #include <message-port.h>
@@ -163,6 +154,7 @@ EXPORT_API int messageport_send_message(const char* remote_app_id, const char* r
  * @retval #MESSAGEPORT_ERROR_CERTIFICATE_NOT_MATCH The remote application is not signed with the same certificate
  * @retval #MESSAGEPORT_ERROR_MAX_EXCEEDED The size of message has exceeded the maximum limit
  * @retval #MESSAGEPORT_ERROR_IO_ERROR Internal I/O error
+ * @retval #MESSAGEPORT_ERROR_RESOURCE_UNAVAILABLE Resource temporarily unavailable
  */
 EXPORT_API int messageport_send_trusted_message(const char* remote_app_id, const char* remote_port, bundle* message);
 
@@ -180,6 +172,7 @@ EXPORT_API int messageport_send_trusted_message(const char* remote_app_id, const
  * @retval #MESSAGEPORT_ERROR_MESSAGEPORT_NOT_FOUND The message port of the remote application is not found
  * @retval #MESSAGEPORT_ERROR_MAX_EXCEEDED The size of message has exceeded the maximum limit
  * @retval #MESSAGEPORT_ERROR_IO_ERROR Internal I/O error
+ * @retval #MESSAGEPORT_ERROR_RESOURCE_UNAVAILABLE Resource temporarily unavailable
  *
  * @code
  * #include <message-port.h>
@@ -220,6 +213,7 @@ EXPORT_API int messageport_send_bidirectional_message(int id, const char* remote
  * @retval #MESSAGEPORT_ERROR_CERTIFICATE_NOT_MATCH The remote application is not signed with the same certificate
  * @retval #MESSAGEPORT_ERROR_MAX_EXCEEDED The size of message has exceeded the maximum limit
  * @retval #MESSAGEPORT_ERROR_IO_ERROR Internal I/O error
+ * @retval #MESSAGEPORT_ERROR_RESOURCE_UNAVAILABLE Resource temporarily unavailable
  */
 EXPORT_API int messageport_send_bidirectional_trusted_message(int id, const char* remote_app_id, const char* remote_port, bundle* data);
 

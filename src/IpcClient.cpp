@@ -46,6 +46,9 @@
 using namespace IPC;
 using namespace std;
 
+static const char _SOCKET_DIR[] = "/run/messageportd/";
+static const int _MAX_AGAIN_COUNT = 3;
+static const int _WAIT_TIME = 100000; // 100 ms
 
 IpcClient::IpcClient(void)
 	: __pReverseSource(NULL)
@@ -132,7 +135,7 @@ IpcClient::MakeConnection(bool forReverse)
 	size_t socketNameLength = 0;
 	string socketName;
 
-	socketName.append("/var/run/osp/");
+	socketName.append(_SOCKET_DIR);
 	socketName.append(__name);
 
 	socketNameLength = socketName.size() + 1;
@@ -200,7 +203,6 @@ IpcClient::MakeConnection(bool forReverse)
 		fd_set rset;
 		fd_set wset;
 		struct timeval timeout;
-		int length = 0;
 		int error = 0;
 		socklen_t socketLength = 0;
 
@@ -236,7 +238,6 @@ IpcClient::MakeConnection(bool forReverse)
 
 		if (FD_ISSET(client, &rset) || FD_ISSET(client, &wset))
 		{
-			length = sizeof(error);
 			ret = getsockopt(client, SOL_SOCKET, SO_ERROR, &error, &socketLength);
 			if (ret < 0)
 			{
@@ -465,6 +466,8 @@ IpcClient::ReleaseFd(int fd)
 int
 IpcClient::SendAsync(IPC::Message* pMessage)
 {
+	int ret = MESSAGEPORT_ERROR_NONE;
+	int againCount = 0;
 	char* pData = (char*) pMessage->data();
 	int remain = pMessage->size();
 	int fd = AcquireFd();
@@ -480,10 +483,29 @@ IpcClient::SendAsync(IPC::Message* pMessage)
 		written = write(fd, (char*) pData, remain);
 		if (written < 0)
 		{
-			_LOGE("Failed to send a request: %d, %s", errno, strerror(errno));
+			if (errno == EAGAIN)
+			{
+				if (againCount < _MAX_AGAIN_COUNT)
+				{
+					againCount++;
+					_LOGI("Retry to send. (%d/%d)", againCount, _MAX_AGAIN_COUNT);
+					usleep(_MAX_AGAIN_COUNT);
+					continue;
+				}
+				else
+				{
+					ret = MESSAGEPORT_ERROR_RESOURCE_UNAVAILABLE;
+					_LOGE("[MESSAGEPORT_ERROR_RESOURCE_UNAVAILABLE] The socket buffer is full.");
+				}
+			}
+			else
+			{
+				ret = MESSAGEPORT_ERROR_IO_ERROR;
+				_LOGE("[MESSAGEPORT_ERROR_IO_ERROR] Failed to send a request: %d, %s", errno, strerror(errno));
+			}
 
 			ReleaseFd(fd);
-			return MESSAGEPORT_ERROR_IO_ERROR;
+			return ret;
 		}
 
 		remain -= written;
@@ -500,6 +522,7 @@ IpcClient::SendSync(IPC::Message* pMessage)
 {
 	int error = MESSAGEPORT_ERROR_NONE;
 	int ret = 0;
+	int againCount = 0;
 
 	int readSize = 0;
 	char buffer[1024];
@@ -516,7 +539,6 @@ IpcClient::SendSync(IPC::Message* pMessage)
 	}
 
 	MessageReplyDeserializer* pReplyDeserializer = pSyncMessage->GetReplyDeserializer();
-	int messageId = SyncMessage::GetMessageId(*pSyncMessage);
 
 	int fd = AcquireFd();
 	if (fd < 0)
@@ -536,10 +558,30 @@ IpcClient::SendSync(IPC::Message* pMessage)
 		written = write(fd, (char*) pData, remain);
 		if (written < 0)
 		{
-			_LOGE("Failed to send a request: %d, %s", errno, strerror(errno));
+			if (errno == EAGAIN)
+			{
+				if (againCount < _MAX_AGAIN_COUNT)
+				{
+					againCount++;
+					_LOGI("Retry to send. (%d/%d)", againCount, _MAX_AGAIN_COUNT);
+					usleep(_MAX_AGAIN_COUNT);
+					continue;
+				}
+				else
+				{
+					error = MESSAGEPORT_ERROR_RESOURCE_UNAVAILABLE;
+					_LOGE("[MESSAGEPORT_ERROR_RESOURCE_UNAVAILABLE] The socket buffer is full.");
+				}
+			}
+			else
+			{
+				error = MESSAGEPORT_ERROR_IO_ERROR;
+				_LOGE("[MESSAGEPORT_ERROR_IO_ERROR] Failed to send a request: %d, %s", errno, strerror(errno));
+			}
 
-			error = MESSAGEPORT_ERROR_IO_ERROR;
-			goto CATCH;
+			delete pReplyDeserializer;
+			ReleaseFd(fd);
+			return error;
 		}
 
 		remain -= written;

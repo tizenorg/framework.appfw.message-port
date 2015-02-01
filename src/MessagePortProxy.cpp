@@ -50,6 +50,52 @@ static const char TRUSTED_MESSAGE[] = "TRUSTED_MESSAGE";
 
 static const int MAX_MESSAGE_SIZE = 16 * 1024;
 
+namespace {
+template <class Type>
+void _Deleter(Type* pInstance)
+{
+	delete pInstance;
+}
+
+template <>
+void _Deleter(pthread_mutex_t* pInstance)
+{
+	if (pInstance)
+	{
+		pthread_mutex_destroy(pInstance);
+		delete pInstance;
+	}
+}
+
+template <>
+void _Deleter(bundle* pInstance)
+{
+	bundle_free(pInstance);
+}
+
+template <class Type>
+class _ResourceGuard
+{
+public:
+	_ResourceGuard(Type* pInstance)
+		: __pInstance(pInstance)
+	{
+	}
+	~_ResourceGuard(void)
+	{
+		_Deleter<Type>(__pInstance);
+	}
+	Type* Release(void)
+	{
+		Type* pInstance = __pInstance;
+		__pInstance = NULL;
+		return pInstance;
+	}
+private:
+	Type* __pInstance;
+};
+}
+
 MessagePortProxy::MessagePortProxy(void)
 	: __pIpcClient(NULL)
 	, __pMutex(NULL)
@@ -70,27 +116,22 @@ MessagePortProxy::Construct(void)
 		_LOGE("Out of memory");
 		return MESSAGEPORT_ERROR_OUT_OF_MEMORY;
 	}
+	_ResourceGuard<IpcClient> cIpcClient(pIpcClient);
 
 	int ret = pIpcClient->Construct("message-port-server", this);
 	if (ret != 0)
 	{
-		delete pIpcClient;
-
 		_LOGE("Failed to create ipc client: %d.", ret);
 		return MESSAGEPORT_ERROR_IO_ERROR;
 	}
 
-	pthread_mutex_t* pMutex = (pthread_mutex_t*) malloc(sizeof(pthread_mutex_t));
+	pthread_mutex_t* pMutex = new (std::nothrow) pthread_mutex_t;
 	if (pMutex == NULL)
 	{
 		_LOGE("Out of memory");
 		return MESSAGEPORT_ERROR_OUT_OF_MEMORY;
 	}
-
-	pthread_mutex_init(pMutex, NULL);
-
-	__pMutex = pMutex;
-	__pIpcClient = pIpcClient;
+	_ResourceGuard<pthread_mutex_t> cMutex(pMutex);
 
 	int pid = getpid();
 	char buffer[256] = {0, };
@@ -103,6 +144,10 @@ MessagePortProxy::Construct(void)
 		return MESSAGEPORT_ERROR_IO_ERROR;
 	}
 
+	pthread_mutex_init(pMutex, NULL);
+
+	__pMutex = cMutex.Release();
+	__pIpcClient = cIpcClient.Release();
 	__appId = buffer;
 
 	return MESSAGEPORT_ERROR_NONE;
@@ -138,24 +183,30 @@ MessagePortProxy::RegisterMessagePort(const string& localPort, bool isTrusted,  
 		return id;
 	}
 
-	bundle *b = bundle_create();
+	bundle *pBundle = bundle_create();
+	if (pBundle == NULL)
+	{
+		_LOGE("Out of memory");
+		return MESSAGEPORT_ERROR_OUT_OF_MEMORY;
+	}
+	_ResourceGuard<bundle> cBundle(pBundle);
 
 	if (!isTrusted)
 	{
-		bundle_add(b, TRUSTED_LOCAL, "FALSE");
+		bundle_add(pBundle, TRUSTED_LOCAL, "FALSE");
 	}
 	else
 	{
-		bundle_add(b, TRUSTED_LOCAL, "TRUE");
+		bundle_add(pBundle, TRUSTED_LOCAL, "TRUE");
 	}
 
-	bundle_add(b, LOCAL_APPID, __appId.c_str());
-	bundle_add(b, LOCAL_PORT, localPort.c_str());
+	bundle_add(pBundle, LOCAL_APPID, __appId.c_str());
+	bundle_add(pBundle, LOCAL_PORT, localPort.c_str());
 
 
 	// Create Bundle Buffer from bundle
 	BundleBuffer buffer;
-	buffer.b = b;
+	buffer.b = pBundle;
 
 	int ret = 0;
 	int return_value = 0;
@@ -163,23 +214,16 @@ MessagePortProxy::RegisterMessagePort(const string& localPort, bool isTrusted,  
 	IPC::Message* pMsg = new MessagePort_registerPort(buffer, &return_value);
 	if (pMsg == NULL)
 	{
-		bundle_free(b);
-
 		_LOGE("Out of memory");
 		return  MESSAGEPORT_ERROR_OUT_OF_MEMORY;
 	}
+	_ResourceGuard<IPC::Message> cMsg(pMsg);
 
 	ret = __pIpcClient->SendRequest(pMsg);
-
-	delete pMsg;
-
-	bundle_free(b);
-
-	if (ret != 0)
+	if (ret != MESSAGEPORT_ERROR_NONE)
 	{
 		_LOGE("Failed to send a request: %d.", ret);
-
-		return MESSAGEPORT_ERROR_IO_ERROR;
+		return ret;
 	}
 
 	// Add a listener
@@ -209,46 +253,46 @@ MessagePortProxy::CheckRemotePort(const string& remoteAppId, const string& remot
 {
 	_SECURE_LOGI("Check a remote port : [%s:%s]", remoteAppId.c_str(), remotePort.c_str());
 
-	bundle *b = bundle_create();
+	bundle *pBundle = bundle_create();
+	if (pBundle == NULL)
+	{
+		_LOGE("Out of memory");
+		return MESSAGEPORT_ERROR_OUT_OF_MEMORY;
+	}
+	_ResourceGuard<bundle> cBundle(pBundle);
 
-	bundle_add(b, LOCAL_APPID, __appId.c_str());
+	bundle_add(pBundle, LOCAL_APPID, __appId.c_str());
 
-	bundle_add(b, REMOTE_APPID, remoteAppId.c_str());
-	bundle_add(b, REMOTE_PORT, remotePort.c_str());
+	bundle_add(pBundle, REMOTE_APPID, remoteAppId.c_str());
+	bundle_add(pBundle, REMOTE_PORT, remotePort.c_str());
 
 	if (!isTrusted)
 	{
-		bundle_add(b, TRUSTED_REMOTE, "FALSE");
+		bundle_add(pBundle, TRUSTED_REMOTE, "FALSE");
 	}
 	else
 	{
-		bundle_add(b, TRUSTED_REMOTE, "TRUE");
+		bundle_add(pBundle, TRUSTED_REMOTE, "TRUE");
 	}
 
 	// To Bundle Buffer
 	BundleBuffer buffer;
-	buffer.b = b;
+	buffer.b = pBundle;
 
 	int return_value = 0;
 	IPC::Message* pMsg = new MessagePort_checkRemotePort(buffer, &return_value);
 	if (pMsg == NULL)
 	{
-		bundle_free(b);
-
 		_LOGE("Out of memory");
 		return MESSAGEPORT_ERROR_OUT_OF_MEMORY;
 	}
+	_ResourceGuard<IPC::Message> cMsg(pMsg);
 
 	int ret = __pIpcClient->SendRequest(pMsg);
-
-	delete pMsg;
-
-	bundle_free(b);
-
-	if (ret < 0)
+	if (ret != MESSAGEPORT_ERROR_NONE)
 	{
 		_LOGE("Failed to send a request: %d.", ret);
-		return MESSAGEPORT_ERROR_IO_ERROR;
+		return ret;
 	}
 
 	if (return_value < 0)
@@ -263,8 +307,6 @@ MessagePortProxy::CheckRemotePort(const string& remoteAppId, const string& remot
 		else if (return_value == MESSAGEPORT_ERROR_CERTIFICATE_NOT_MATCH)
 		{
 			_SECURE_LOGI("The remote application (%s) is not signed with the same certificate", remoteAppId.c_str());
-
-			*exist = true;
 			return MESSAGEPORT_ERROR_CERTIFICATE_NOT_MATCH;
 		}
 		else
@@ -285,32 +327,37 @@ MessagePortProxy::SendMessage(const string& remoteAppId, const string& remotePor
 
 	int ret = 0;
 
-	bundle *b = bundle_create();
-	bundle_add(b, MESSAGE_TYPE, "UNI-DIR");
+	bundle *pBundle = bundle_create();
+	if (pBundle == NULL)
+	{
+		_LOGE("Out of memory");
+		return MESSAGEPORT_ERROR_OUT_OF_MEMORY;
+	}
+	_ResourceGuard<bundle> cBundle(pBundle);
 
-	bundle_add(b, LOCAL_APPID, __appId.c_str());
+	bundle_add(pBundle, MESSAGE_TYPE, "UNI-DIR");
 
-	bundle_add(b, REMOTE_APPID, remoteAppId.c_str());
-	bundle_add(b, REMOTE_PORT, remotePort.c_str());
+	bundle_add(pBundle, LOCAL_APPID, __appId.c_str());
+
+	bundle_add(pBundle, REMOTE_APPID, remoteAppId.c_str());
+	bundle_add(pBundle, REMOTE_PORT, remotePort.c_str());
 
 	if (!trustedMessage)
 	{
-		bundle_add(b, TRUSTED_MESSAGE, "FALSE");
+		bundle_add(pBundle, TRUSTED_MESSAGE, "FALSE");
 	}
 	else
 	{
-		bundle_add(b, TRUSTED_MESSAGE, "TRUE");
+		bundle_add(pBundle, TRUSTED_MESSAGE, "TRUE");
 	}
 
 	BundleBuffer metadata;
-	metadata.b = b;
+	metadata.b = pBundle;
 
 	BundleBuffer buffer;
 	buffer.b = data;
 
 	ret = SendMessageInternal(metadata, buffer);
-
-	bundle_free(b);
 
 	return ret;
 }
@@ -322,42 +369,47 @@ MessagePortProxy::SendMessage(const string& localPort, bool trustedPort, const s
 
 	int ret = 0;
 
-	bundle *b = bundle_create();
-	bundle_add(b, MESSAGE_TYPE, "BI-DIR");
+	bundle *pBundle = bundle_create();
+	if (pBundle == NULL)
+	{
+		_LOGE("Out of memory");
+		return MESSAGEPORT_ERROR_OUT_OF_MEMORY;
+	}
+	_ResourceGuard<bundle> cBundle(pBundle);
 
-	bundle_add(b, LOCAL_APPID, __appId.c_str());
-	bundle_add(b, LOCAL_PORT, localPort.c_str());
+	bundle_add(pBundle, MESSAGE_TYPE, "BI-DIR");
+
+	bundle_add(pBundle, LOCAL_APPID, __appId.c_str());
+	bundle_add(pBundle, LOCAL_PORT, localPort.c_str());
 
 	if (!trustedPort)
 	{
-		bundle_add(b, TRUSTED_LOCAL, "FALSE");
+		bundle_add(pBundle, TRUSTED_LOCAL, "FALSE");
 	}
 	else
 	{
-		bundle_add(b, TRUSTED_LOCAL, "TRUE");
+		bundle_add(pBundle, TRUSTED_LOCAL, "TRUE");
 	}
 
-	bundle_add(b, REMOTE_APPID, remoteAppId.c_str());
-	bundle_add(b, REMOTE_PORT, remotePort.c_str());
+	bundle_add(pBundle, REMOTE_APPID, remoteAppId.c_str());
+	bundle_add(pBundle, REMOTE_PORT, remotePort.c_str());
 
 	if (!trustedMessage)
 	{
-		bundle_add(b, TRUSTED_MESSAGE, "FALSE");
+		bundle_add(pBundle, TRUSTED_MESSAGE, "FALSE");
 	}
 	else
 	{
-		bundle_add(b, TRUSTED_MESSAGE, "TRUE");
+		bundle_add(pBundle, TRUSTED_MESSAGE, "TRUE");
 	}
 
 	BundleBuffer metadata;
-	metadata.b = b;
+	metadata.b = pBundle;
 
 	BundleBuffer buffer;
 	buffer.b = data;
 
 	ret = SendMessageInternal(metadata, buffer);
-
-	bundle_free(b);
 
 	return ret;
 }
@@ -372,6 +424,7 @@ MessagePortProxy::SendMessageInternal(const BundleBuffer& metadata, const Bundle
 		_LOGE("Out of memory");
 		return MESSAGEPORT_ERROR_OUT_OF_MEMORY;
 	}
+	_ResourceGuard<IPC::Message> cMsg(pMsg);
 
 	// Check the message size
 	int len = 0;
@@ -383,18 +436,14 @@ MessagePortProxy::SendMessageInternal(const BundleBuffer& metadata, const Bundle
 	if (len > MAX_MESSAGE_SIZE)
 	{
 		_LOGE("The size of message (%d) has exceeded the maximum limit.", len);
-
-		delete pMsg;
 		return MESSAGEPORT_ERROR_MAX_EXCEEDED;
 	}
 
 	int ret = __pIpcClient->SendRequest(pMsg);
-	delete pMsg;
-
-	if (ret < 0)
+	if (ret != MESSAGEPORT_ERROR_NONE)
 	{
 		_LOGE("Failed to send a request: %d.", ret);
-		return MESSAGEPORT_ERROR_IO_ERROR;
+		return ret;
 	}
 
 	if (return_value < 0)
@@ -410,6 +459,12 @@ MessagePortProxy::SendMessageInternal(const BundleBuffer& metadata, const Bundle
 			_LOGE("The remote application is not signed with the same certificate.");
 
 			return MESSAGEPORT_ERROR_CERTIFICATE_NOT_MATCH;
+		}
+		else if (return_value == MESSAGEPORT_ERROR_RESOURCE_UNAVAILABLE)
+		{
+			_LOGE("The socket receiver buffer of remote port is temporarily full.");
+
+			return MESSAGEPORT_ERROR_RESOURCE_UNAVAILABLE;
 		}
 		else
 		{
@@ -570,15 +625,17 @@ MessagePortProxy::IsLocalPortRegisted(const string& localPort, bool trusted, int
 bool
 MessagePortProxy::OnSendMessageInternal(const BundleBuffer& metadata, const BundleBuffer& buffer)
 {
-	bundle* b = metadata.b;
+	bundle* pBundle = metadata.b;
+	_ResourceGuard<bundle> cBundle(pBundle);
 
-	const char* pRemoteAppId = bundle_get_val(b, REMOTE_APPID);
-	const char* pRemotePort = bundle_get_val(b, REMOTE_PORT);
-	string trustedMessage = bundle_get_val(b, TRUSTED_MESSAGE);
+	const char* pLocalAppId = bundle_get_val(pBundle, LOCAL_APPID);
+	const char* pRemoteAppId = bundle_get_val(pBundle, REMOTE_APPID);
+	const char* pRemotePort = bundle_get_val(pBundle, REMOTE_PORT);
+	string trustedMessage = bundle_get_val(pBundle, TRUSTED_MESSAGE);
 
-	string messageType = bundle_get_val(b, MESSAGE_TYPE);
+	string messageType = bundle_get_val(pBundle, MESSAGE_TYPE);
 
-	_SECURE_LOGI("Message received to App: %s, Port: %s, Trusted: %s", pRemoteAppId, pRemotePort, trustedMessage.c_str());
+	_SECURE_LOGI("Message received! from App: %s, to App: %s, Port: %s, Trusted: %s", pLocalAppId, pRemoteAppId, pRemotePort, trustedMessage.c_str());
 
 	int id = 0;
 	messageport_message_cb callback;
@@ -599,19 +656,18 @@ MessagePortProxy::OnSendMessageInternal(const BundleBuffer& metadata, const Bund
 	{
 		if (messageType.compare("UNI-DIR") == 0)
 		{
-			callback(id, NULL, NULL, false, buffer.b);
+			callback(id, pLocalAppId, NULL, false, buffer.b);
 		}
 		else
 		{
-			string localAppId = bundle_get_val(b, LOCAL_APPID);
-			string localPort = bundle_get_val(b, LOCAL_PORT);
-			string trustedLocal = bundle_get_val(b, TRUSTED_LOCAL);
+			string localPort = bundle_get_val(pBundle, LOCAL_PORT);
+			string trustedLocal = bundle_get_val(pBundle, TRUSTED_LOCAL);
 
-			_SECURE_LOGI("From App: %s, Port: %s, TrustedLocal: %s", localAppId.c_str(), localPort.c_str(), trustedLocal.c_str());
+			_SECURE_LOGI("From App: %s, Port: %s, TrustedLocal: %s", pLocalAppId, localPort.c_str(), trustedLocal.c_str());
 
 			bool trustedPort = (trustedLocal.compare("TRUE") == 0);
 
-			callback(id, localAppId.c_str(), localPort.c_str(), trustedPort, buffer.b);
+			callback(id, pLocalAppId, localPort.c_str(), trustedPort, buffer.b);
 		}
 
 	}
@@ -619,8 +675,6 @@ MessagePortProxy::OnSendMessageInternal(const BundleBuffer& metadata, const Bund
 	{
 		_LOGI("No callback");
 	}
-
-	bundle_free(b);
 
 	return true;
 }
