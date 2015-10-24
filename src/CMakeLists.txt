@@ -6,13 +6,10 @@ INCLUDE_DIRECTORIES (
 	)
 
 SET(${this_target}_SOURCE_FILES
-	IpcClient.cpp
-	message-port.cpp
-	message-port-messages.cpp
-	MessagePortProxy.cpp
+	message-port.c
 	)
 
-SET(${this_target}_requires "dlog bundle glib-2.0 aul chromium")
+SET(${this_target}_requires "dlog bundle glib-2.0 gio-2.0 aul openssl")
 
 INCLUDE(FindPkgConfig)
 pkg_check_modules(${this_target} REQUIRED ${${this_target}_requires})
@@ -28,14 +25,14 @@ SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${EXTRA_CFLAGS} -fPIC -Wall -Werror -fvisibi
 SET(CMAKE_C_FLAGS_DEBUG "-O0 -g")
 
 ## SET CPP COMPILER FLAGS
-SET(CMAKE_CXX_FLAGS "${OSP_DEBUG_FLAGS} ${CMAKE_CXX_FLAGS} ${EXTRA_CFLAGS} ${OSP_COMPILER_FLAGS} -fvisibility=hidden -fvisibility-inlines-hidden")
+SET(CMAKE_CXX_FLAGS "${OSP_DEBUG_FLAGS} ${CMAKE_CXX_FLAGS} ${EXTRA_CFLAGS} ${OSP_COMPILER_FLAGS} -fvisibility=hidden")
 
 
 ## Create Library
 ADD_LIBRARY (${this_target} SHARED ${${this_target}_SOURCE_FILES})
 
 ## SET LINKER FLAGS
-SET(CMAKE_EXE_LINKER_FLAGS "-Wl,--as-needed -Wl,--rpath=${LIB_INSTALL_DIR}")
+SET(CMAKE_SHARED_LINKER_FLAGS "-Wl,--as-needed -Wl,--no-undefined -Wl,--rpath=${LIB_INSTALL_DIR}")
 
 TARGET_LINK_LIBRARIES(${this_target} ${${this_target}_LDFLAGS})
 

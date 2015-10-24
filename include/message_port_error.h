@@ -27,13 +27,13 @@
 typedef enum
 {
 	MESSAGEPORT_ERROR_NONE = 0,					/**< Successful */
-	MESSAGEPORT_ERROR_IO_ERROR = -EIO, 			/**< Internal I/O error */
+	MESSAGEPORT_ERROR_IO_ERROR = -EIO,			/**< Internal I/O error */
 	MESSAGEPORT_ERROR_OUT_OF_MEMORY = -ENOMEM,		/**< Out of memory */
 	MESSAGEPORT_ERROR_INVALID_PARAMETER = -EINVAL,	/**< Invalid parameter */
-	MESSAGEPORT_ERROR_MESSAGEPORT_NOT_FOUND = -ENOKEY, 	/**< The message port of the remote application is not found */
-	MESSAGEPORT_ERROR_CERTIFICATE_NOT_MATCH = -EACCES, 	/**< The remote application is not signed with the same certificate */
+	MESSAGEPORT_ERROR_MESSAGEPORT_NOT_FOUND = -ENOKEY,	/**< The message port of the remote application is not found */
+	MESSAGEPORT_ERROR_CERTIFICATE_NOT_MATCH = -EACCES,	/**< The remote application is not signed with the same certificate */
 	MESSAGEPORT_ERROR_MAX_EXCEEDED = -EMSGSIZE,			/**< The size of message has exceeded the maximum limit */
-	MESSAGEPORT_ERROR_RESOURCE_UNAVAILABLE = -EBUSY, 	/**< Resource temporarily unavailable */
+	MESSAGEPORT_ERROR_RESOURCE_UNAVAILABLE = -EBUSY,	/**< Resource temporarily unavailable */
 } messageport_error_e;
 
 #endif /* __APPFW_MESSAGE_PORT_ERROR_H__ */

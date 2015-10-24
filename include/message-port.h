@@ -47,6 +47,18 @@ extern "C" {
  */
 typedef void (*messageport_message_cb)(int id, const char* remote_app_id, const char* remote_port, bool trusted_message, bundle* data);
 
+/**
+ * @brief Unregisters the local message port. @n
+ *
+ * @param [in] local_port_id the id of the local message port
+ * @param [in] trusted_port true if target port is trusted port
+ * @return Return positive on success, otherwise a negative error value.
+ * @retval #MESSAGEPORT_ERROR_NONE Successful
+ * @retval #MESSAGEPORT_ERROR_INVALID_PARAMETER Invalid parameter
+ * @retval #MESSAGEPORT_ERROR_OUT_OF_MEMORY Out of memory
+ * @retval #MESSAGEPORT_ERROR_MESSAGEPORT_NOT_FOUND The message port of the remote application is not found
+ */
+EXPORT_API int messageport_unregister_local_port(int local_port_id, bool trusted_port);
 
 /**
  * @brief Registers the local message port. @n
@@ -129,8 +141,8 @@ EXPORT_API int messageport_check_trusted_remote_port(const char* remote_app_id, 
  * #include <message-port.h>
  *
  * bundle *b = bundle_create();
- * bundle_add(b, "key1", "value1");
- * bundle_add(b, "key2", "value2");
+ * bundle_add_str(b, "key1", "value1");
+ * bundle_add_str(b, "key2", "value2");
  *
  * int ret = messageport_send_message("0123456789.BasicApp", "BasicAppPort", b);
  *
@@ -185,8 +197,8 @@ EXPORT_API int messageport_send_trusted_message(const char* remote_app_id, const
  * int main(int argc, char *argv[])
  * {
  *   bundle *b = bundle_create();
- *   bundle_add(b, "key1", "value1");
- *   bundle_add(b, "key2", "value2");
+ *   bundle_add_str(b, "key1", "value1");
+ *   bundle_add_str(b, "key2", "value2");
  *
  *   int id = messageport_register_local_port("HelloPort", OnMessageReceived);
  *
