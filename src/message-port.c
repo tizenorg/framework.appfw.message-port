@@ -470,7 +470,7 @@ static bool send_message(GVariant *parameters)
 	message_port_local_port_info_s *mi;
 	int local_reg_id = 0;
 
-	g_variant_get(parameters, "(ssbbssbus)", &local_appid, &local_port, &local_trusted, &bi_dir,
+	g_variant_get(parameters, "(&s&sbb&s&sbu&s)", &local_appid, &local_port, &local_trusted, &bi_dir,
 			&remote_appid, &remote_port, &remote_trusted, &len, &raw);
 
 	if (!remote_port) {
@@ -491,6 +491,10 @@ static bool send_message(GVariant *parameters)
 	}
 	if (!local_port) {
 		_LOGE("Invalid argument : local_port");
+		goto out;
+	}
+	if (!raw) {
+		_LOGE("Invalid argument : raw");
 		goto out;
 	}
 	if (strcmp(remote_appid, __app_id) != 0) {
@@ -522,8 +526,6 @@ static bool send_message(GVariant *parameters)
 	}
 
 	data = bundle_decode(raw, len);
-	bundle_free_encoded_rawdata(&raw);
-
 	if (!data) {
 		_LOGE("Invalid argument : message");
 		goto out;
@@ -535,7 +537,6 @@ static bool send_message(GVariant *parameters)
 		mi->callback(mi->local_id, local_appid, NULL, false, data);
 	}
 out:
-
 	return true;
 }
 
@@ -599,7 +600,7 @@ static int __check_remote_port(const char *remote_app_id, const char *remote_por
 		g_variant_get(result, "(b)", &name_exist);
 
 		if (!name_exist) {
-			LOGE("Name not exist %s", bus_name);
+			LOGI("Name not exist %s", bus_name);
 			*exist = false;
 			ret_val = MESSAGEPORT_ERROR_NONE;
 		}
@@ -673,13 +674,15 @@ static void __dbus_method_call_handler(GDBusConnection *conn,
 	 gpointer sender_pid = g_hash_table_lookup(__sender_appid_hash, sender);
 	if (sender_pid == NULL) {
 		if (!__check_sender_validation(parameters, sender, conn))
-			return;
+			goto out;
 	}
 
-	if (g_strcmp0(method_name, "send_message") == 0) {
+	if (g_strcmp0(method_name, "send_message") == 0)
 		send_message(parameters);
-	}
 
+out:
+	g_dbus_method_invocation_return_value(
+			invocation, g_variant_new("()"));
 }
 
 static const GDBusInterfaceVTable interface_vtable = {
@@ -839,8 +842,11 @@ void __list_free_port_list(gpointer data)
 static void __hash_destory_local_value(gpointer data)
 {
 	message_port_local_port_info_s *mli = (message_port_local_port_info_s *)data;
-	if (mli->port_name)
-		free(mli->port_name);
+	if(mli) {
+		if (mli->port_name)
+			free(mli->port_name);
+		free(mli);
+	}
 }
 static void __hash_destory_remote_value(gpointer data)
 {
